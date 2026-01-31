@@ -1,0 +1,788 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Moodboard Creator</title>
+    <style>
+        :root {
+            --bg-color: #f5f5dc;
+            --dot-color: #dcdcdc;
+            --ui-bg: rgba(255, 255, 255, 0.95);
+            --ui-shadow: 0 4px 15px rgba(0,0,0,0.1);
+            --item-shadow: 0 4px 10px rgba(0,0,0,0.15);
+            --video-bg: #000;
+        }
+
+        * {
+            box-sizing: border-box;
+            user-select: none;
+        }
+
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image: radial-gradient(var(--dot-color) 1.5px, transparent 1.5px);
+            background-size: 20px 20px;
+        }
+
+        /* --- Toolbar --- */
+        #toolbar {
+            position: fixed;
+            bottom: 30px;
+            left: 50%;
+            transform: translateX(-50%);
+            display: flex;
+            gap: 12px;
+            padding: 12px 20px;
+            background: var(--ui-bg);
+            backdrop-filter: blur(10px);
+            border-radius: 50px;
+            box-shadow: var(--ui-shadow);
+            z-index: 10000;
+            align-items: center;
+        }
+
+        button {
+            border: none;
+            background: #eee;
+            color: #333;
+            padding: 10px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            transition: all 0.2s ease;
+            white-space: nowrap;
+        }
+
+        button:hover {
+            background: #ddd;
+            transform: translateY(-1px);
+        }
+
+        button.primary {
+            background: #333;
+            color: #fff;
+        }
+
+        button.primary:hover {
+            background: #000;
+        }
+
+        /* --- Board Area --- */
+        #board-container {
+            width: 100vw;
+            height: 100vh;
+            position: relative;
+            overflow: auto;
+        }
+
+        #board {
+            width: 3000px;
+            height: 3000px;
+            position: relative;
+            transform-origin: 0 0;
+        }
+
+        /* --- Board Items --- */
+        .board-item {
+            position: absolute;
+            cursor: grab;
+            display: inline-block;
+            transition: box-shadow 0.2s, transform 0.2s;
+            box-shadow: var(--item-shadow);
+            border: 4px solid transparent;
+            border-radius: 4px;
+            z-index: 1;
+            background: white;
+            touch-action: none;
+        }
+
+        .board-item:active {
+            cursor: grabbing;
+        }
+
+        .board-item.selected {
+            box-shadow: 0 0 0 2px #333;
+            z-index: 1000 !important;
+        }
+
+        .board-item img, 
+        .board-item video, 
+        .board-item iframe {
+            display: block;
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            pointer-events: auto;
+            border-radius: 2px;
+        }
+
+        .board-item video {
+            background: var(--video-bg);
+            object-fit: contain;
+        }
+
+        /* --- Video Drag Overlay (Top 80%) --- */
+        .video-drag-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: calc(100% - 50px); /* Leave bottom 50px for controls */
+            background: transparent;
+            cursor: grab;
+            z-index: 5; /* Above video */
+        }
+        .video-drag-overlay:active {
+            cursor: grabbing;
+        }
+
+        /* --- Item Controls --- */
+        .item-controls {
+            position: absolute;
+            top: -20px;
+            right: -15px;
+            display: flex;
+            gap: 5px;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.2s;
+        }
+
+        .board-item:hover .item-controls,
+        .board-item.selected .item-controls {
+            opacity: 1;
+            pointer-events: auto;
+        }
+
+        .ctrl-btn {
+            width: 24px;
+            height: 24px;
+            background: #333;
+            color: white;
+            border-radius: 4px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            cursor: pointer;
+            font-size: 14px;
+            z-index: 20;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.3);
+        }
+
+        .ctrl-btn.delete { background: #ff4d4d; }
+
+        /* Resize Handle */
+        .resize-handle {
+            position: absolute;
+            bottom: 0;
+            right: 0;
+            width: 20px;
+            height: 20px;
+            background: linear-gradient(135deg, transparent 50%, #333 50%);
+            cursor: nwse-resize;
+            display: none;
+            z-index: 15;
+        }
+
+        .board-item:hover .resize-handle,
+        .board-item.selected .resize-handle {
+            display: block;
+        }
+
+        /* --- YouTube Thumbnail Styling --- */
+        .yt-thumbnail-container {
+            width: 100%;
+            height: 100%;
+            position: relative;
+            cursor: pointer;
+        }
+        .yt-thumbnail-container img {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+        }
+        .yt-play-overlay {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.3);
+            transition: background 0.2s;
+        }
+        .yt-thumbnail-container:hover .yt-play-overlay {
+            background: rgba(0,0,0,0.1);
+        }
+
+        /* --- Inputs --- */
+        input[type="file"] { display: none; }
+
+        /* --- Modal --- */
+        #modal-overlay {
+            position: fixed;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 20000;
+        }
+        #modal {
+            background: white;
+            padding: 25px;
+            border-radius: 8px;
+            width: 400px;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.2);
+        }
+        #modal input {
+            width: 100%;
+            padding: 10px;
+            margin: 10px 0 20px 0;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 16px;
+        }
+        #modal-buttons { display: flex; justify-content: flex-end; gap: 10px; }
+
+        /* --- Toast --- */
+        #toast {
+            position: fixed;
+            top: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            background: #333;
+            color: white;
+            padding: 10px 20px;
+            border-radius: 30px;
+            font-size: 14px;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.3s;
+            z-index: 30000;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="board-container">
+        <div id="board"></div>
+    </div>
+
+    <div id="toolbar">
+        <button onclick="triggerFile('image/*')">+ Photos</button>
+        <button onclick="triggerFile('video/*')">+ Videos</button>
+        <button onclick="openYTModal()">+ YouTube</button>
+        <div style="width:1px; height:20px; background:#ccc; margin:0 5px;"></div>
+        <button onclick="rearrangeBoard()">✨ Rearrange</button>
+        <button onclick="clearBoard()" style="color:#d32f2f;">Clear</button>
+        <button class="primary" onclick="saveBoard()">Save HTML</button>
+    </div>
+
+    <input type="file" id="fileInput" accept="image/*" multiple>
+    <input type="file" id="videoInput" accept="video/*" multiple>
+
+    <div id="modal-overlay">
+        <div id="modal">
+            <h3 style="margin-top:0;">Add YouTube Video</h3>
+            <p style="font-size:13px; color:#666;">Paste a YouTube link</p>
+            <input type="text" id="yt-url" placeholder="https://www.youtube.com/watch?v=...">
+            <div id="modal-buttons">
+                <button onclick="closeYTModal()">Cancel</button>
+                <button class="primary" onclick="confirmYT()">Add</button>
+            </div>
+        </div>
+    </div>
+
+    <div id="toast">Message</div>
+
+    <script>
+        // --- State ---
+        const board = document.getElementById('board');
+        const fileInput = document.getElementById('fileInput');
+        const videoInput = document.getElementById('videoInput');
+        const ytModal = document.getElementById('modal-overlay');
+        const ytInput = document.getElementById('yt-url');
+        const toastEl = document.getElementById('toast');
+        
+        let items = []; 
+        let dragItem = null;
+        let resizeItem = null;
+        let dragOffsetX = 0;
+        let dragOffsetY = 0;
+        let startWidth = 0;
+        let startHeight = 0;
+        let startX, startY;
+        let hasMoved = false;
+        let clickedYTContainer = null; // Track if we clicked a YT thumbnail
+        let zIndexCounter = 10;
+        const SNAP_THRESHOLD = 20;
+
+        // --- File Handling ---
+        function triggerFile(type) {
+            if (type.startsWith('image')) fileInput.click();
+            else videoInput.click();
+        }
+
+        fileInput.addEventListener('change', (e) => handleFiles(e.target.files, 'image'));
+        videoInput.addEventListener('change', (e) => handleFiles(e.target.files, 'video'));
+
+        function handleFiles(files, type) {
+            if (!files.length) return;
+            Array.from(files).forEach((file, index) => {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    setTimeout(() => createBoardItem(type, e.target.result), index * 50);
+                };
+                reader.readAsDataURL(file);
+            });
+            fileInput.value = ''; videoInput.value = '';
+        }
+
+        // --- YouTube ---
+        function openYTModal() { ytModal.style.display = 'flex'; ytInput.focus(); }
+        function closeYTModal() { ytModal.style.display = 'none'; ytInput.value = ''; }
+        function confirmYT() {
+            const id = extractYTId(ytInput.value.trim());
+            if (id) {
+                createBoardItem('youtube', id);
+                closeYTModal();
+                showToast('YouTube video added');
+            } else alert('Invalid YouTube URL');
+        }
+        function extractYTId(url) {
+            const regExp = /^.*(youtu.be\/|v\/|u\/\w\/|embed\/|watch\?v=|&v=)([^#&?]*).*/;
+            const match = url.match(regExp);
+            return (match && match[2].length === 11) ? match[2] : null;
+        }
+
+        // --- Load Youtube Iframe Logic ---
+        function loadYT(container, id) {
+            // Check if iframe already exists
+            if (container.querySelector('iframe')) return;
+
+            const iframe = document.createElement('iframe');
+            iframe.src = `https://www.youtube.com/embed/${id}?autoplay=1&controls=1`;
+            iframe.frameBorder = "0";
+            iframe.allow = "accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture";
+            iframe.allowFullscreen = true;
+            iframe.style.width = '100%';
+            iframe.style.height = '100%';
+            iframe.style.position = 'absolute';
+            iframe.style.top = '0';
+            iframe.style.left = '0';
+            iframe.style.pointerEvents = 'auto'; // Ensure iframe is clickable
+
+            // Clear container
+            while(container.firstChild) container.removeChild(container.firstChild);
+            container.appendChild(iframe);
+        }
+
+        // --- Item Creation ---
+        function createBoardItem(type, src) {
+            const el = document.createElement('div');
+            el.classList.add('board-item');
+            
+            const startX = (board.clientWidth / 2) - 100 + (Math.random() * 200 - 100);
+            const startY = (board.clientHeight / 2) - 100 + (Math.random() * 200 - 100);
+            el.style.left = `${startX}px`;
+            el.style.top = `${startY}px`;
+            el.style.zIndex = zIndexCounter++;
+
+            let content;
+            
+            if (type === 'image') {
+                content = document.createElement('img');
+                content.src = src;
+                content.onload = function() {
+                    const ratio = this.naturalWidth / this.naturalHeight;
+                    let w = 300; let h = 300 / ratio;
+                    if (h > 300) { h = 300; w = 300 * ratio; }
+                    el.style.width = w + 'px';
+                    el.style.height = h + 'px';
+                    el.dataset.aspect = ratio;
+                }
+            } else if (type === 'video') {
+                content = document.createElement('video');
+                content.src = src;
+                content.controls = true;
+                content.loop = false;
+                content.muted = false;
+                el.style.width = '320px'; 
+                el.style.height = 'auto';
+                el.dataset.aspect = 16/9;
+                content.onloadedmetadata = function() {
+                    el.dataset.aspect = this.videoWidth / this.videoHeight;
+                    el.style.height = el.offsetWidth / el.dataset.aspect + 'px';
+                }
+                
+                // Add Overlay for dragging
+                const overlay = document.createElement('div');
+                overlay.className = 'video-drag-overlay';
+                el.appendChild(overlay); 
+                
+            } else if (type === 'youtube') {
+                content = document.createElement('div');
+                content.className = 'yt-thumbnail-container';
+                content.dataset.ytid = src; // Store ID
+                
+                const img = document.createElement('img');
+                img.src = `https://img.youtube.com/vi/${src}/hqdefault.jpg`;
+                
+                const overlay = document.createElement('div');
+                overlay.className = 'yt-play-overlay';
+                
+                content.appendChild(img);
+                content.appendChild(overlay);
+
+                el.style.width = '320px';
+                el.style.height = '180px';
+                el.dataset.aspect = 16/9;
+            }
+
+            if (type !== 'youtube') el.appendChild(content);
+            else el.appendChild(content);
+
+            // Controls
+            const controls = document.createElement('div');
+            controls.className = 'item-controls';
+            
+            const delBtn = document.createElement('div');
+            delBtn.className = 'ctrl-btn delete';
+            delBtn.innerHTML = '&times;';
+            delBtn.onclick = (e) => { e.stopPropagation(); removeItem(el); };
+            controls.appendChild(delBtn);
+            el.appendChild(controls);
+
+            // Resize Handle
+            const resizeHandle = document.createElement('div');
+            resizeHandle.className = 'resize-handle';
+            el.appendChild(resizeHandle);
+
+            // Events
+            el.addEventListener('mousedown', onMouseDown);
+            resizeHandle.addEventListener('mousedown', onResizeStart);
+            el.addEventListener('touchstart', onTouchStart, {passive: false});
+
+            board.appendChild(el);
+            items.push(el);
+            selectItem(el);
+        }
+
+        function removeItem(el) {
+            el.remove();
+            items = items.filter(i => i !== el);
+        }
+
+        function clearBoard() {
+            if(confirm("Clear the entire moodboard?")) {
+                board.innerHTML = '';
+                items = [];
+            }
+        }
+
+        // --- Robust Drag Logic ---
+        function onMouseDown(e) {
+            if (e.target.classList.contains('delete-btn') || e.target.classList.contains('resize-handle') || e.target.closest('.item-controls')) return;
+
+            dragItem = e.currentTarget;
+            selectItem(dragItem);
+
+            // --- Check for YouTube Click ---
+            clickedYTContainer = e.target.closest('.yt-thumbnail-container');
+
+            // --- Video Control Protection ---
+            // If target is video and click is near bottom, do NOT drag.
+            if (e.target.tagName === 'VIDEO') {
+                const rect = e.target.getBoundingClientRect();
+                const clickYFromBottom = rect.height - (e.clientY - rect.top);
+                if (clickYFromBottom < 50) {
+                    dragItem = null;
+                    clickedYTContainer = null; // Not a drag event
+                    return;
+                }
+            }
+
+            // Record initial state for "Click vs Drag" detection
+            startX = e.clientX;
+            startY = e.clientY;
+            hasMoved = false;
+
+            // Prevent default for text selection/ghosting
+            // Note: This blocks native 'click' events, so we handle YT click manually in MouseUp
+            e.preventDefault();
+
+            dragOffsetX = e.clientX - dragItem.getBoundingClientRect().left;
+            dragOffsetY = e.clientY - dragItem.getBoundingClientRect().top;
+
+            document.addEventListener('mousemove', onMouseMove);
+            document.addEventListener('mouseup', onMouseUp);
+        }
+
+        function onMouseMove(e) {
+            if (!dragItem) return;
+
+            const dx = e.clientX - startX;
+            const dy = e.clientY - startY;
+
+            if (!hasMoved && (Math.abs(dx) > 5 || Math.abs(dy) > 5)) {
+                hasMoved = true;
+                dragItem.style.transition = 'none';
+            }
+
+            if (hasMoved) {
+                const containerRect = document.getElementById('board-container').getBoundingClientRect();
+                const scrollLeft = document.getElementById('board-container').scrollLeft;
+                const scrollTop = document.getElementById('board-container').scrollTop;
+
+                let newX = (e.clientX - containerRect.left) + scrollLeft - dragOffsetX;
+                let newY = (e.clientY - containerRect.top) + scrollTop - dragOffsetY;
+
+                dragItem.style.left = `${newX}px`;
+                dragItem.style.top = `${newY}px`;
+            }
+        }
+
+        function onMouseUp(e) {
+            if (dragItem) {
+                dragItem.style.transition = 'box-shadow 0.2s, transform 0.2s';
+                
+                // If we didn't move (it was a click)
+                if (!hasMoved) {
+                    if (clickedYTContainer) {
+                        // It was a click on a YouTube thumbnail
+                        const videoId = clickedYTContainer.dataset.ytid;
+                        if (videoId) {
+                            loadYT(clickedYTContainer, videoId);
+                        }
+                    }
+                    // If it was a click on a regular item, we just let it be selected (done in mousedown)
+                } else {
+                    // It was a drag
+                    snapToNearby(dragItem);
+                }
+
+                dragItem = null;
+                clickedYTContainer = null;
+            }
+            if (resizeItem) {
+                resizeItem.style.transition = 'box-shadow 0.2s, transform 0.2s';
+                resizeItem = null;
+            }
+            document.removeEventListener('mousemove', onMouseMove);
+            document.removeEventListener('mouseup', onMouseUp);
+            document.removeEventListener('mousemove', onResizeMove);
+        }
+
+        // --- Resize Logic ---
+        function onResizeStart(e) {
+            e.stopPropagation(); 
+            e.preventDefault();
+            resizeItem = e.currentTarget.parentElement; 
+            selectItem(resizeItem);
+            resizeItem.style.transition = 'none';
+            startWidth = parseFloat(resizeItem.style.width);
+            startHeight = parseFloat(resizeItem.style.height);
+            dragOffsetX = e.clientX - startWidth;
+            document.addEventListener('mousemove', onResizeMove);
+            document.addEventListener('mouseup', onMouseUp);
+        }
+
+        function onResizeMove(e) {
+            if (!resizeItem) return;
+            const newWidth = e.clientX - dragOffsetX;
+            if (newWidth > 50) {
+                const aspect = parseFloat(resizeItem.dataset.aspect) || 1;
+                resizeItem.style.width = newWidth + 'px';
+                resizeItem.style.height = (newWidth / aspect) + 'px';
+                
+                // If video, update overlay height
+                const overlay = resizeItem.querySelector('.video-drag-overlay');
+                if (overlay) {
+                    overlay.style.height = `calc(100% - 50px)`;
+                }
+            }
+        }
+
+        // --- Touch Support ---
+        function onTouchStart(e) {
+            if (e.target.classList.contains('delete-btn') || e.target.classList.contains('resize-handle')) return;
+            e.preventDefault(); 
+            const touch = e.touches[0];
+            const mouseEvent = new MouseEvent('mousedown', {
+                clientX: touch.clientX, clientY: touch.clientY, currentTarget: e.currentTarget
+            });
+            e.currentTarget.dispatchEvent(mouseEvent);
+        }
+        document.addEventListener('touchmove', (e) => {
+            const touch = e.touches[0];
+            if(dragItem) onMouseMove({clientX: touch.clientX, clientY: touch.clientY});
+        }, {passive: false});
+        document.addEventListener('touchend', () => onMouseUp());
+
+        // --- Snap & Selection ---
+        function snapToNearby(el) {
+            const x1 = parseFloat(el.style.left);
+            const y1 = parseFloat(el.style.top);
+            const w1 = parseFloat(el.style.width);
+            const h1 = parseFloat(el.style.height);
+
+            items.forEach(other => {
+                if (other === el) return;
+                const x2 = parseFloat(other.style.left);
+                const y2 = parseFloat(other.style.top);
+                const w2 = parseFloat(other.style.width);
+                const h2 = parseFloat(other.style.height);
+
+                if (Math.abs(x1 - x2) < SNAP_THRESHOLD) el.style.left = x2 + 'px';
+                else if (Math.abs(x1 - (x2 + w2)) < SNAP_THRESHOLD) el.style.left = (x2 + w2) + 'px';
+                else if (Math.abs((x1 + w1) - x2) < SNAP_THRESHOLD) el.style.left = (x2 - w1) + 'px';
+
+                if (Math.abs(y1 - y2) < SNAP_THRESHOLD) el.style.top = y2 + 'px';
+                else if (Math.abs(y1 - (y2 + h2)) < SNAP_THRESHOLD) el.style.top = (y2 + h2) + 'px';
+                else if (Math.abs((y1 + h1) - y2) < SNAP_THRESHOLD) el.style.top = (y2 - h1) + 'px';
+            });
+        }
+
+        function selectItem(el) {
+            items.forEach(i => i.classList.remove('selected'));
+            el.classList.add('selected');
+            el.style.zIndex = zIndexCounter++;
+        }
+
+        document.getElementById('board-container').addEventListener('mousedown', (e) => {
+            if (e.target.id === 'board-container' || e.target.id === 'board') {
+                items.forEach(i => i.classList.remove('selected'));
+            }
+        });
+
+        // --- Non-Destructive Rearrange (Shelf Packing) ---
+        function rearrangeBoard() {
+            if (items.length === 0) return;
+            showToast('Arranging items...');
+
+            const containerWidth = document.getElementById('board-container').clientWidth;
+            const gap = 20;
+            const padding = 20;
+
+            // Add transitions
+            items.forEach(item => {
+                item.style.transition = 'top 0.6s cubic-bezier(0.2, 0.8, 0.2, 1), left 0.6s cubic-bezier(0.2, 0.8, 0.2, 1)';
+            });
+
+            let currentX = padding;
+            let currentY = padding;
+            let rowHeight = 0;
+
+            items.forEach(item => {
+                // Get current dimensions (User Set)
+                const w = parseFloat(item.style.width);
+                const h = parseFloat(item.style.height);
+
+                // Check if item fits in current row
+                if (currentX + w > containerWidth - padding) {
+                    // Move to next row
+                    currentX = padding;
+                    currentY += rowHeight + gap;
+                    rowHeight = 0;
+                }
+
+                // Set Position
+                item.style.left = `${currentX}px`;
+                item.style.top = `${currentY}px`;
+
+                // Update trackers
+                currentX += w + gap;
+                if (h > rowHeight) {
+                    rowHeight = h;
+                }
+            });
+
+            // Adjust board size
+            board.style.height = `${currentY + rowHeight + 50}px`;
+            board.style.width = `${containerWidth}px`;
+
+            setTimeout(() => {
+                items.forEach(item => {
+                    item.style.transition = 'box-shadow 0.2s, transform 0.2s';
+                });
+                showToast('Arrangement complete');
+            }, 650);
+        }
+
+        // --- Save ---
+        function saveBoard() {
+            showToast('Generating file...');
+            const boardClone = board.cloneNode(true);
+            
+            const selectedItems = boardClone.querySelectorAll('.selected');
+            selectedItems.forEach(el => el.classList.remove('selected'));
+            
+            const uiElements = boardClone.querySelectorAll('.item-controls, .resize-handle, .yt-play-overlay, .video-drag-overlay');
+            uiElements.forEach(el => el.remove());
+
+            // Convert YT thumbnails back to iframes
+            const thumbnails = boardClone.querySelectorAll('.yt-thumbnail-container');
+            thumbnails.forEach(container => {
+                const img = container.querySelector('img');
+                if (img) {
+                    const id = img.src.split('/vi/')[1].split('/')[0];
+                    container.innerHTML = `<iframe src="https://www.youtube.com/embed/${id}?autoplay=0&controls=1" frameborder="0" allowfullscreen style="width:100%; height:100%; pointer-events:auto;"></iframe>`;
+                }
+            });
+
+            const styleContent = document.querySelector('style').innerHTML;
+            
+            const savedHTML = `
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>My Moodboard</title>
+    <style>
+        ${styleContent}
+        body, html { overflow: auto; } 
+        #toolbar { display: none !important; } 
+        .item-controls, .resize-handle, .yt-play-overlay, .video-drag-overlay { display: none !important; }
+        .board-item { border: none !important; } 
+        .watermark { position: fixed; bottom: 10px; right: 10px; font-family: sans-serif; color: rgba(0,0,0,0.3); font-size: 12px; pointer-events: none; }
+    </style>
+</head>
+<body>
+    <div id="board-container" style="width: 100vw; height: 100vh; overflow: auto;">
+        <div id="board" style="width: ${board.style.width}; height: ${board.style.height};">
+            ${boardClone.innerHTML}
+        </div>
+    </div>
+    <div class="watermark">Created with Moodboard Tool</div>
+</body>
+</html>`;
+
+            const blob = new Blob([savedHTML], {type: 'text/html'});
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = 'my-moodboard.html';
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            showToast('File saved!');
+        }
+
+        function showToast(msg) {
+            toastEl.textContent = msg;
+            toastEl.style.opacity = '1';
+            setTimeout(() => toastEl.style.opacity = '0', 2000);
+        }
+    </script>
+</body>
+</html>
